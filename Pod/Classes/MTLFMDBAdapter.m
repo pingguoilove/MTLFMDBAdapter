@@ -257,6 +257,30 @@ static NSString * const MTLFMDBAdapterThrownExceptionErrorKey = @"MTLFMDBAdapter
 	}
 }
 
++(NSValueTransformer*) valueTransformerForModel:(MTLModel<MTLFMDBSerializing>*)model propertyKey:(NSString*)key {
+    
+    Class cls = [model class];
+    
+    SEL selector = MTLSelectorWithKeyPattern(key, "FMDBTransformer");
+    
+    if ([cls respondsToSelector:selector]) {
+        NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:[cls methodSignatureForSelector:selector]];
+        invocation.target = cls;
+        invocation.selector = selector;
+        [invocation invoke];
+        
+        __unsafe_unretained id result = nil;
+        [invocation getReturnValue:&result];
+        return result;
+    }
+    
+    if ([cls respondsToSelector:@selector(FMDBTransformerForKey:)]) {
+        return [cls FMDBTransformerForKey:key];
+    }
+    
+    return nil;
+}
+
 + (NSString *)propertyKeyForModel:(MTLModel<MTLFMDBSerializing> *)model column:(NSString *)column
 {
     NSDictionary *columns = [model.class FMDBColumnsByPropertyKey];
@@ -298,6 +322,11 @@ static NSString * const MTLFMDBAdapterThrownExceptionErrorKey = @"MTLFMDBAdapter
         if (keyPath != nil && ![keyPath isEqual:[NSNull null]])
         {
             id v = [dictionaryValue valueForKey:propertyKey];
+            
+            NSValueTransformer *transformer = [self valueTransformerForModel:model propertyKey:keyPath];
+            if (transformer && [transformer.class allowsReverseTransformation]) {
+                v = [transformer reverseTransformedValue:v];
+            }
             if (v == nil) {
                 NSLog(@"Warning: value for key %@ is nil", propertyKey);
                 v = [NSNull null];
